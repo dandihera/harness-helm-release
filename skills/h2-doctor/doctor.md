@@ -29,35 +29,53 @@ allowed-tools: [Bash]
 
 ## Execution Sequence
 
-이 command는 prompt template이며, 모델이 다음 순서로 `Bash` tool을 호출해 진행한다.
+1. **harness doctor 상태 조회** — 단일 Bash tool 호출
+   - 다음 중 해당하는 snippet을 **하나의 Bash tool 호출**로 실행한다.
 
-1. **Target resolution**
-   - `--target`이 있으면 그 경로를 target으로 결정.
-   - `--target`이 없으면 `Bash`로 `git rev-parse --show-toplevel`을 실행해 repository root를 target으로 결정.
-   - `git rev-parse --show-toplevel`이 실패하고 `--allow-non-git`도 없으면 안내 후 중단.
-   - `--allow-non-git`이 있으면 `pwd`를 target으로 결정.
-   - `Bash`로 `test -d <target>/.git` 확인. `.git`이 없고 `--allow-non-git`도 없으면 안내 후 중단.
+   `--target <path>` 명시 시:
+   ```bash
+   target='<path>'
+   [ -x "$target/.harness-helm/bin/harness" ] || {
+     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   ```
 
-2. **target runtime binary 확인**
-   - `Bash`로 `test -x <target>/.harness-helm/bin/harness`를 실행한다.
-   - 실행 파일이 없으면 "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 `/h2:doctor`를 다시 실행하세요."를 출력하고 중단한다.
+   기본값 (`--target` 없음, `--allow-non-git` 없음):
+   ```bash
+   target=$(git rev-parse --show-toplevel 2>/dev/null) || {
+     echo "git repository root를 찾을 수 없습니다. git repository 안에서 실행하거나 --allow-non-git을 사용하세요."
+     exit 1
+   }
+   [ -x "$target/.harness-helm/bin/harness" ] || {
+     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   ```
 
-3. **harness doctor 상태 조회**
-   - `Bash`로 아래를 실행한다:
-     ```text
-     <target>/.harness-helm/bin/harness doctor --target <target>
-     ```
+   `--allow-non-git` 있는 경우:
+   ```bash
+   target=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+   [ -x "$target/.harness-helm/bin/harness" ] || {
+     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   ```
+
    - 출력 결과를 사용자에게 그대로 표시한다.
    - 종료 코드(`$?`)에 따라 분기:
      - `0` → 최신 상태. 추가 액션 없이 종료.
-     - `2` → Step 4 [업데이트 가능] 흐름으로 진입.
+     - `2` → Step 2 [업데이트 가능] 흐름으로 진입.
      - `3` → "상태 확인 중 오류가 발생했습니다." 출력 후 중단.
      - 그 외 → "알 수 없는 종료 코드입니다." 출력 후 중단.
    - **IMPORTANT**: h2 runtime은 Go binary(`harness`)다. `python3`, `harness.py`, `harness_lib/`는 v0.20.0에서 완전히 제거됐다. Python 버전 체크를 실행하거나 `harness.py`를 호출하지 말 것.
 
-4. **업데이트 가능 상태 처리**
-   - Step 3 출력에서 `설치된 버전:` 줄의 마지막 SemVer token을 `current_version`으로 사용한다.
-   - Step 3 출력에서 `최신 버전:` 줄의 마지막 SemVer token을 `latest_version`으로 사용한다.
+2. **업데이트 가능 상태 처리**
+   - Step 1 출력에서 `설치된 버전:` 줄의 마지막 SemVer token을 `current_version`으로 사용한다.
+   - Step 1 출력에서 `최신 버전:` 줄의 마지막 SemVer token을 `latest_version`으로 사용한다.
    - 둘 중 하나라도 추출하지 못하면 업데이트를 진행하지 않고 중단한다.
    - "`{current_version} → {latest_version}`로 업데이트하시겠습니까? (yes/no)" 확인 요청. no → 변경 없이 종료.
    - release asset base 결정:
@@ -81,17 +99,17 @@ allowed-tools: [Bash]
      sh $TMP_PKG/pkg/h2-update.sh --target <target> --from {current_version} --to {latest_version} [--backup]
      ```
 
-5. **Post-apply result**
+3. **Post-apply result**
    - `<target>/.harness-helm/install-manifest.json` 경로를 출력.
    - `<target>/.harness-helm/bin/harness(.exe)` 경로와 `install-manifest.json.runtime_binary` evidence를 출력.
    - 다음 권장 명령(`/h2:plan` 또는 `/h2:context`)을 한 줄 안내.
 
 ## Failure Handling
 
-- Step 2 runtime binary가 없으면 curl bootstrap 안내 후 중단.
-- Step 3 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내.
-- Step 4 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
-- Step 4 apply 실패 시:
+- Step 1 binary 호출 실패 시 (binary 없음 또는 git 실패): 해당 오류 메시지 출력 후 중단.
+- Step 1 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내.
+- Step 2 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
+- Step 2 apply 실패 시:
   - `install-manifest.json`은 성공한 install command만 갱신한다.
   - `--backup`이 사용됐으면 backup으로 자동 rollback 시도.
   - partial 상태 감지 시 `<target>/.harness-helm/install-partial.json`에 상태 기록 후 `/h2:doctor` 재실행 안내.
