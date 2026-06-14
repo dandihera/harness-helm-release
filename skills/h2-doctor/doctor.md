@@ -137,3 +137,4 @@ allowed-tools: [Bash]
   - `harness-<VER>-<os>-<arch>.sha256` — 위 binary의 checksum sidecar.
   - Windows에서는 binary가 `harness-<VER>-windows-<arch>.exe` + `.sha256`이며 `h2-update.ps1` 경로를 사용한다.
 - curl/wget 차단 환경(context-mode 플러그인 등)에서는 위 파일을 로컬에 두고 `H2_HARNESS_RELEASE_BASE=file:///abs/local/dir`(권장) 또는 절대/상대 로컬 경로로 실행한다. http(s)가 아닌 base는 doctor.md zip 단계와 `h2-update.sh` `fetch()` 모두 `cp`로 처리하므로 curl/wget 없이 zip·binary 다운로드가 완료된다.
+- 차단 환경 우회는 위 `file://`(또는 로컬 경로) base가 단일 지원 경로다. `gh release download` 등 별도 CLI 기반 다운로드 fallback은 **의도적으로 미지원**한다 (`gh`도 인증·네트워크가 필요해 동일하게 차단될 수 있어 실효성이 낮다 — 결정 근거: ADR-0005).
