@@ -33,7 +33,7 @@ allowed-tools: [Bash]
 
 0. **`--version` 형식 검증** (지정된 경우에만, binary 호출 이전)
    - `--version`이 주어진 경우에만 수행한다. 미지정이면 건너뛴다.
-   - 허용 패턴은 release tag 형식 `^v[0-9]+\.[0-9]+\.[0-9]+$`(예: `v0.40.0`)다. pre-release/build metadata(`-rc.1`, `+build`)는 불허한다.
+   - 허용 패턴은 release tag 형식 `^v[0-9]+\.[0-9]+\.[0-9]+(\.[a-z][a-z0-9]*)?$`(예: stable `v0.40.0`, experimental `v0.40.0.exp`)다. dash pre-release/build metadata(`-rc.1`, `+build`)는 불허하나 experimental 채널 suffix(`.exp` 등)는 허용한다.
    - 불일치 시 binary를 호출하지 않고 다음 형태로 즉시 중단한다:
      ```text
      --version 형식이 올바르지 않습니다. release tag 형식(vX.Y.Z, 예: v0.40.0)으로 지정하세요. (입력값: <원본>)
@@ -156,7 +156,7 @@ allowed-tools: [Bash]
 - `/h2:doctor`는 `h2` 진입점의 유일한 doctor command다. 다른 `/h2:*` 명령은 target install 단계에서 target 측 `.claude/commands/h2/*.md`에 위치한다.
 - guard 판정 기준은 `<target>/.harness-helm/install-manifest.json` 단독이다.
 - release asset 레포는 `dandihera/harness-helm-release`다 (source 레포 `dandihera/harness-helm`와 별개). 기본 base: `https://github.com/dandihera/harness-helm-release/releases/download/{target_version}` (`{target_version}`은 `--version` 미지정 시 latest, 지정 시 `requested_version`).
-- `--version <vX.Y.Z>`는 latest 감지와 무관하게 지정 release tag를 설치하고 downgrade/rollback도 허용한다. release tag 형식(`^v[0-9]+\.[0-9]+\.[0-9]+$`)만 허용하며 `harness doctor` binary로는 전달하지 않는다(상태 조회·current 파싱만 binary가 수행). binary가 `✅ 최신`(exit 0) 또는 cleanup-needed(exit 2)를 보고해도 `--version`이 있으면 지정 버전 apply를 강제한다. exit 3/알 수 없는 종료 코드는 `--version` 유무와 무관하게 중단한다.
+- `--version <vX.Y.Z>`는 latest 감지와 무관하게 지정 release tag를 설치하고 downgrade/rollback도 허용한다. release tag 형식(`^v[0-9]+\.[0-9]+\.[0-9]+(\.[a-z][a-z0-9]*)?$`, experimental suffix 포함)만 허용하며 `harness doctor` binary로는 전달하지 않는다(상태 조회·current 파싱만 binary가 수행). binary가 `✅ 최신`(exit 0) 또는 cleanup-needed(exit 2)를 보고해도 `--version`이 있으면 지정 버전 apply를 강제한다. exit 3/알 수 없는 종료 코드는 `--version` 유무와 무관하게 중단한다.
 - `H2_HARNESS_RELEASE_BASE` 환경변수는 release asset base override용이다 (CI 환경, 로컬 테스트용). override 디렉터리에는 다음 파일이 **모두** 있어야 한다:
   - `h2-install-<VER>.zip` — doctor.md 공통 절차가 받아 압축 해제하는 install package.
   - `harness-<VER>-<os>-<arch>` — zip 내부 `h2-update.sh`가 받는 runtime binary (예: `harness-v0.35.1-darwin-arm64`).
