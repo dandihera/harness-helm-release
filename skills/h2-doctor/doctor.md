@@ -18,6 +18,7 @@ allowed-tools: [Bash]
 /h2:doctor --target <path>
 /h2:doctor --backup
 /h2:doctor --allow-non-git
+/h2:doctor --version <vX.Y.Z>
 ```
 
 기본값:
@@ -26,8 +27,18 @@ allowed-tools: [Bash]
 - `--dry-run`: false (false면 사용자 승인 후 실제 적용)
 - `--backup`: false (기존 파일 backup 여부)
 - `--allow-non-git`: false (`.git` 없으면 중단)
+- `--version`: 미지정 (미지정 시 기존 latest 흐름). 지정 시 latest 감지 결과와 무관하게 해당 release tag의 install package를 적용하며 downgrade/rollback도 허용한다. release tag 형식(`vX.Y.Z`, 예: `v0.40.0`)만 허용하고 `harness doctor` binary로는 전달하지 않는다. `--dry-run`/`--target`/`--backup`/`--allow-non-git`와 조합 가능하다.
 
 ## Execution Sequence
+
+0. **`--version` 형식 검증** (지정된 경우에만, binary 호출 이전)
+   - `--version`이 주어진 경우에만 수행한다. 미지정이면 건너뛴다.
+   - 허용 패턴은 release tag 형식 `^v[0-9]+\.[0-9]+\.[0-9]+$`(예: `v0.40.0`)다. pre-release/build metadata(`-rc.1`, `+build`)는 불허한다.
+   - 불일치 시 binary를 호출하지 않고 다음 형태로 즉시 중단한다:
+     ```text
+     --version 형식이 올바르지 않습니다. release tag 형식(vX.Y.Z, 예: v0.40.0)으로 지정하세요. (입력값: <원본>)
+     ```
+   - 검증 통과 시 `requested_version = <입력값>`으로 둔다.
 
 1. **harness doctor 상태 조회** — 단일 Bash tool 호출
    - 다음 중 해당하는 snippet을 **하나의 Bash tool 호출**로 실행한다.
@@ -67,26 +78,40 @@ allowed-tools: [Bash]
 
    - 출력 결과를 사용자에게 그대로 표시한다.
    - 종료 코드(`$?`)에 따라 분기:
-     - `0` → 최신 상태. 추가 액션 없이 종료.
-     - `2` → Step 2 [업데이트 가능] 흐름으로 진입.
-     - `3` → "상태 확인 중 오류가 발생했습니다." 출력 후 중단.
-     - 그 외 → "알 수 없는 종료 코드입니다." 출력 후 중단.
+     - `0` → 최신 상태. `requested_version`이 없으면 추가 액션 없이 종료. `requested_version`이 있으면 **조기 종료하지 않고** `📦 버전 <current> ✅ 최신` 줄에서 `current_version`을 파싱한 뒤 Step 2의 명시 버전 apply 흐름으로 진입한다.
+     - `2` → Step 2 [exit 2 분기] 흐름으로 진입 (업데이트 가능 또는 cleanup 필요).
+     - `3` → "상태 확인 중 오류가 발생했습니다." 출력 후 중단. (`requested_version` 유무와 무관하게 중단)
+     - 그 외 → "알 수 없는 종료 코드입니다." 출력 후 중단. (`requested_version` 유무와 무관하게 중단)
    - **IMPORTANT**: h2 runtime은 Go binary(`harness`)다. `python3`, `harness.py`, `harness_lib/`는 v0.20.0에서 완전히 제거됐다. Python 버전 체크를 실행하거나 `harness.py`를 호출하지 말 것.
 
-2. **업데이트 가능 상태 처리**
-   - Step 1 출력에서 `설치된 버전:` 줄의 마지막 SemVer token을 `current_version`으로 사용한다.
-   - Step 1 출력에서 `최신 버전:` 줄의 마지막 SemVer token을 `latest_version`으로 사용한다.
-   - 둘 중 하나라도 추출하지 못하면 업데이트를 진행하지 않고 중단한다.
-   - "`{current_version} → {latest_version}`로 업데이트하시겠습니까? (yes/no)" 확인 요청. no → 변경 없이 종료.
-   - release asset base 결정:
+2. **exit 2 분기 처리** (modern row 우선, 구 `상태:` prefix fallback)
+   - Step 1 출력에서 새 `📦 버전` 줄을 우선 파싱한다.
+     - `📦 버전    <current> → <latest>  🆙 업데이트 가능` 형태면 첫 SemVer token을 `current_version`, 두 번째 SemVer token을 `latest_version`으로 사용한다.
+     - `📦 버전    <current>  ✅ 최신` 형태면 `current_version == latest_version == <current>`로 둔다.
+   - 새 `📦 버전` 줄을 찾지 못하면 구 runtime fallback으로 `설치된 버전:` 줄의 마지막 SemVer token을 `current_version`, `최신 버전:` 줄의 마지막 SemVer token을 `latest_version`으로 사용한다.
+   - branch signal은 새 출력에서 `🆙 업데이트 가능` row, `레거시 파일 감지` section, `user-scope plugin 잔여물` section을 우선 사용한다.
+   - modern signal이 없으면 구 `상태:` 줄 prefix를 fallback으로 사용한다.
+     - `업데이트 가능` → 업데이트 가능
+     - `cleanup 필요 (현재 버전` 또는 `cleanup 필요 (WARN` → target legacy cleanup
+     - `cleanup 필요 (user-scope)` 또는 `cleanup 필요 user-scope (WARN` → user-scope cleanup
+     - `cleanup 필요 (target + user-scope)` → target legacy cleanup 후 user-scope cleanup
+   - **`target_version` 결정**: `requested_version`이 있으면 `target_version = requested_version`(latest/current 비교 무관, downgrade/rollback 허용), 없으면 `target_version = latest_version`.
+   - `requested_version`이 없는 경로에서 업데이트 가능 또는 target legacy cleanup에 진입했는데 `current_version` 또는 `latest_version`을 추출하지 못하면 update package 적용을 진행하지 않고 중단한다. `requested_version`이 있는 경로에서는 `latest_version` 추출 실패가 중단 사유가 아니며(asset 선택에 미사용), `current_version` 추출 실패 시 확인 문구의 current를 `(unknown)`으로 표기하고 진행한다.
+   - 업데이트 가능이면(또는 `requested_version` 지정 시) 확인 요청:
+     - `requested_version` 미지정: "🆙 `{current_version} → {latest_version}`로 업데이트하시겠습니까? (yes/no)".
+     - `requested_version` 지정: "📌 `{current_version} → {target_version}` 명시 버전을 적용하시겠습니까? (yes/no)". `target_version < current_version`이면 `(downgrade/rollback)` 표기, `current_version`이 `(unknown)`이면 `(unknown) → {target_version}`로 표기.
+     - no → 변경 없이 종료.
+   - target legacy cleanup만 필요하면 "🧹 레거시 파일 cleanup을 진행하시겠습니까? (yes/no)" 확인 요청. no → 변경 없이 종료. 단 `requested_version`이 있으면 cleanup 문구 대신 위 명시 버전 apply 문구를 사용하고 `target_version` apply를 강제한다(cleanup-needed 보고여도 적용).
+   - user-scope cleanup이 필요하면 Step 1 출력의 `user-scope plugin 잔여물` 섹션과 `/plugin marketplace remove ...` 안내를 재인용하고, cache 디렉터리 자동 정리는 별도 yes/no 확인 후 진행한다. `installed_plugins.json`과 `known_marketplaces.json`은 직접 수정하지 않는다. `requested_version`이 있으면 user-scope cleanup 안내와 별개로 `target_version` apply를 수행한다(둘은 독립이며 서로 생략시키지 않는다).
+   - release asset base 결정 (`{target_version}` = `requested_version` 또는 latest):
      - `H2_HARNESS_RELEASE_BASE`가 있으면 해당 base 사용.
-     - 없으면 release 레포(`dandihera/harness-helm-release`) 기본 URL (`https://github.com/dandihera/harness-helm-release/releases/download/{latest_version}`).
-   - install package zip(`h2-install-{latest_version}.zip`)을 임시 디렉터리에 다운로드 · 압축 해제한다. base가 http(s)가 아니면(`file://` 또는 로컬 경로) `h2-update.sh`의 `fetch()`와 동일하게 `cp`로 처리한다.
+     - 없으면 release 레포(`dandihera/harness-helm-release`) 기본 URL (`https://github.com/dandihera/harness-helm-release/releases/download/{target_version}`).
+   - install package zip(`h2-install-{target_version}.zip`)을 임시 디렉터리에 다운로드 · 압축 해제한다. base가 http(s)가 아니면(`file://` 또는 로컬 경로) `h2-update.sh`의 `fetch()`와 동일하게 `cp`로 처리한다.
      ```bash
      TMP_PKG=$(mktemp -d)
-     release_base="${H2_HARNESS_RELEASE_BASE:-https://github.com/dandihera/harness-helm-release/releases/download/${latest_version}}"
+     release_base="${H2_HARNESS_RELEASE_BASE:-https://github.com/dandihera/harness-helm-release/releases/download/${target_version}}"
      release_base="${release_base%/}"
-     package_zip="h2-install-${latest_version}.zip"
+     package_zip="h2-install-${target_version}.zip"
      case "$release_base" in
        http://*|https://*) curl -fsSL "$release_base/$package_zip" -o "$TMP_PKG/pkg.zip" ;;
        file://*)           cp "${release_base#file://}/$package_zip" "$TMP_PKG/pkg.zip" ;;
@@ -130,7 +155,8 @@ allowed-tools: [Bash]
 
 - `/h2:doctor`는 `h2` 진입점의 유일한 doctor command다. 다른 `/h2:*` 명령은 target install 단계에서 target 측 `.claude/commands/h2/*.md`에 위치한다.
 - guard 판정 기준은 `<target>/.harness-helm/install-manifest.json` 단독이다.
-- release asset 레포는 `dandihera/harness-helm-release`다 (source 레포 `dandihera/harness-helm`와 별개). 기본 base: `https://github.com/dandihera/harness-helm-release/releases/download/{latest_version}`.
+- release asset 레포는 `dandihera/harness-helm-release`다 (source 레포 `dandihera/harness-helm`와 별개). 기본 base: `https://github.com/dandihera/harness-helm-release/releases/download/{target_version}` (`{target_version}`은 `--version` 미지정 시 latest, 지정 시 `requested_version`).
+- `--version <vX.Y.Z>`는 latest 감지와 무관하게 지정 release tag를 설치하고 downgrade/rollback도 허용한다. release tag 형식(`^v[0-9]+\.[0-9]+\.[0-9]+$`)만 허용하며 `harness doctor` binary로는 전달하지 않는다(상태 조회·current 파싱만 binary가 수행). binary가 `✅ 최신`(exit 0) 또는 cleanup-needed(exit 2)를 보고해도 `--version`이 있으면 지정 버전 apply를 강제한다. exit 3/알 수 없는 종료 코드는 `--version` 유무와 무관하게 중단한다.
 - `H2_HARNESS_RELEASE_BASE` 환경변수는 release asset base override용이다 (CI 환경, 로컬 테스트용). override 디렉터리에는 다음 파일이 **모두** 있어야 한다:
   - `h2-install-<VER>.zip` — doctor.md 공통 절차가 받아 압축 해제하는 install package.
   - `harness-<VER>-<os>-<arch>` — zip 내부 `h2-update.sh`가 받는 runtime binary (예: `harness-v0.35.1-darwin-arm64`).
