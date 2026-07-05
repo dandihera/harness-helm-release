@@ -47,7 +47,7 @@ allowed-tools: [Bash]
    ```bash
    target='<path>'
    [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
      exit 1
    }
    "$target/.harness-helm/bin/harness" doctor --target "$target"
@@ -60,7 +60,7 @@ allowed-tools: [Bash]
      exit 1
    }
    [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
      exit 1
    }
    "$target/.harness-helm/bin/harness" doctor --target "$target"
@@ -70,7 +70,7 @@ allowed-tools: [Bash]
    ```bash
    target=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
    [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. curl bootstrap으로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
      exit 1
    }
    "$target/.harness-helm/bin/harness" doctor --target "$target"
