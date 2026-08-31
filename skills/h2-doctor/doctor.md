@@ -46,11 +46,25 @@ allowed-tools: [Bash]
    `--target <path>` 명시 시:
    ```bash
    target='<path>'
-   [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+   _t=$(cd "$target" 2>/dev/null && pwd) || {
+     echo "target 디렉터리를 찾을 수 없습니다: $target"
      exit 1
    }
-   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   target="$_t"
+   wintarget=$(cd "$target" && pwd -W 2>/dev/null || printf '%s' "$target")
+   h2bin="$target/.harness-helm/bin/harness"
+   [ -x "$h2bin" ] || h2bin="$target/.harness-helm/bin/harness.exe"
+   [ -x "$h2bin" ] || {
+     echo "h2 runtime binary가 없습니다."
+     echo "  탐색 경로: $target/.harness-helm/bin/harness, $target/.harness-helm/bin/harness.exe"
+     echo "  target: $target"
+     echo "  PowerShell용 target: $wintarget"
+     echo "  install.sh: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.sh"
+     echo "  install.ps1: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.ps1"
+     echo "  이 문서의 '부트스트랩 설치' 섹션 명령을 실행한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$h2bin" doctor --target "$target"
    ```
 
    기본값 (`--target` 없음, `--allow-non-git` 없음):
@@ -59,21 +73,49 @@ allowed-tools: [Bash]
      echo "git repository root를 찾을 수 없습니다. git repository 안에서 실행하거나 --allow-non-git을 사용하세요."
      exit 1
    }
-   [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+   _t=$(cd "$target" 2>/dev/null && pwd) || {
+     echo "target 디렉터리를 찾을 수 없습니다: $target"
      exit 1
    }
-   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   target="$_t"
+   wintarget=$(cd "$target" && pwd -W 2>/dev/null || printf '%s' "$target")
+   h2bin="$target/.harness-helm/bin/harness"
+   [ -x "$h2bin" ] || h2bin="$target/.harness-helm/bin/harness.exe"
+   [ -x "$h2bin" ] || {
+     echo "h2 runtime binary가 없습니다."
+     echo "  탐색 경로: $target/.harness-helm/bin/harness, $target/.harness-helm/bin/harness.exe"
+     echo "  target: $target"
+     echo "  PowerShell용 target: $wintarget"
+     echo "  install.sh: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.sh"
+     echo "  install.ps1: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.ps1"
+     echo "  이 문서의 '부트스트랩 설치' 섹션 명령을 실행한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$h2bin" doctor --target "$target"
    ```
 
    `--allow-non-git` 있는 경우:
    ```bash
    target=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-   [ -x "$target/.harness-helm/bin/harness" ] || {
-     echo "h2 runtime binary가 없습니다. 공식 설치 스크립트로 runtime을 먼저 준비한 뒤 /h2:doctor를 다시 실행하세요."
+   _t=$(cd "$target" 2>/dev/null && pwd) || {
+     echo "target 디렉터리를 찾을 수 없습니다: $target"
      exit 1
    }
-   "$target/.harness-helm/bin/harness" doctor --target "$target"
+   target="$_t"
+   wintarget=$(cd "$target" && pwd -W 2>/dev/null || printf '%s' "$target")
+   h2bin="$target/.harness-helm/bin/harness"
+   [ -x "$h2bin" ] || h2bin="$target/.harness-helm/bin/harness.exe"
+   [ -x "$h2bin" ] || {
+     echo "h2 runtime binary가 없습니다."
+     echo "  탐색 경로: $target/.harness-helm/bin/harness, $target/.harness-helm/bin/harness.exe"
+     echo "  target: $target"
+     echo "  PowerShell용 target: $wintarget"
+     echo "  install.sh: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.sh"
+     echo "  install.ps1: https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.ps1"
+     echo "  이 문서의 '부트스트랩 설치' 섹션 명령을 실행한 뒤 /h2:doctor를 다시 실행하세요."
+     exit 1
+   }
+   "$h2bin" doctor --target "$target"
    ```
 
    - 출력 결과를 사용자에게 그대로 표시한다.
@@ -136,9 +178,48 @@ allowed-tools: [Bash]
    - `<target>/.harness-helm/bin/harness(.exe)` 경로와 `install-manifest.json.runtime_binary` evidence를 출력.
    - 다음 권장 명령(`/h2:plan` 또는 `/h2:context`)을 한 줄 안내.
 
+## 부트스트랩 설치
+
+runtime binary가 아직 없을 때 실행한다. Step 1이 출력한 `target`(sh용)과 `PowerShell용 target`(wintarget)을 그대로 치환하고, 이번 호출에 준 선택 인자를 대응 인자로 함께 넘긴다.
+
+POSIX sh (macOS / Linux / Windows Git Bash):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.sh | sh -s -- --target '<target>' [--allow-non-git] [--version <vX.Y.Z>]
+```
+
+Windows PowerShell:
+
+```powershell
+& ([ScriptBlock]::Create((irm https://raw.githubusercontent.com/dandihera/harness-helm-release/main/install.ps1))) -Target '<wintarget>' [-AllowNonGit] [-Version <vX.Y.Z>]
+```
+
+인자 대응:
+
+| doctor 인자 | install.sh | install.ps1 |
+| --- | --- | --- |
+| 해석된 target | `--target '<target>'` (항상 포함) | `-Target '<wintarget>'` (항상 포함) |
+| `--allow-non-git` | `--allow-non-git` | `-AllowNonGit` |
+| `--version <vX.Y.Z>` | `--version <vX.Y.Z>` | `-Version <vX.Y.Z>` |
+
+- 지정하지 않은 선택 인자는 대괄호째 생략한다. 빈 값으로 넘기지 않는다.
+- quoting: sh는 작은따옴표로 감싸고 경로 안의 `'`를 `'\''`로 치환하고, PowerShell은 작은따옴표로 감싸고 `'`를 `''`로 치환한다.
+- 설치가 끝나면 **같은 target으로** 다시 실행한다.
+
+렌더링 사례:
+
+| target | `--allow-non-git` | `--version` | sh 명령 꼬리 |
+| --- | --- | --- | --- |
+| `/a/b` | 없음 | 없음 | `--target '/a/b'` |
+| `/a b` | 있음 | 없음 | `--target '/a b' --allow-non-git` |
+| `/a'b` | 없음 | `v0.53.0` | `--target '/a'\''b' --version v0.53.0` |
+| `/a/b` | 있음 | `v0.53.0` | `--target '/a/b' --allow-non-git --version v0.53.0` |
+
 ## Failure Handling
 
-- Step 1 binary 호출 실패 시 (binary 없음 또는 git 실패): 해당 오류 메시지 출력 후 중단.
+- Step 1 binary 부재 exit 1 시: Step 1이 출력한 진단을 그대로 보이고, **`## 부트스트랩 설치` 섹션의 sh·PowerShell 두 명령에 해석된 target과 이번 호출의 `--allow-non-git`·`--version`을 치환해 사용자에게 출력한 뒤 즉시 중단한다** (다른 tool 호출 금지). 지정하지 않은 선택 인자는 생략하고, 설치 후 같은 target으로 `/h2:doctor`를 다시 실행하도록 안내한다.
+- Step 1 target 정규화 실패(디렉터리 부재·권한) exit 1 시: 해당 경로를 명시한 오류 메시지 출력 후 중단. binary 탐색으로 진행하지 않는다.
+- Step 1 git 실패 시: 해당 오류 메시지 출력 후 중단.
 - Step 1 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내.
 - Step 2 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
 - Step 2 apply 실패 시:
