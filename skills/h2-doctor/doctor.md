@@ -220,7 +220,7 @@ Windows PowerShell:
 - Step 1 binary 부재 exit 1 시: Step 1이 출력한 진단을 그대로 보이고, **`## 부트스트랩 설치` 섹션의 sh·PowerShell 두 명령에 해석된 target과 이번 호출의 `--allow-non-git`·`--version`을 치환해 사용자에게 출력한 뒤 즉시 중단한다** (다른 tool 호출 금지). 지정하지 않은 선택 인자는 생략하고, 설치 후 같은 target으로 `/h2:doctor`를 다시 실행하도록 안내한다.
 - Step 1 target 정규화 실패(디렉터리 부재·권한) exit 1 시: 해당 경로를 명시한 오류 메시지 출력 후 중단. binary 탐색으로 진행하지 않는다.
 - Step 1 git 실패 시: 해당 오류 메시지 출력 후 중단.
-- Step 1 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내.
+- Step 1 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내. GitHub API 비인증 한도(60/h) 소진 403이면 오류 메시지에 리셋 시각·`GH_TOKEN`/`GITHUB_TOKEN` 인증 안내·`/h2:doctor --version vX.Y.Z` 우회 안내가 포함되므로 그대로 보인다(#1036).
 - Step 2 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
 - Step 2 apply 실패 시:
   - `install-manifest.json`은 성공한 install command만 갱신한다.
