@@ -149,6 +149,7 @@ allowed-tools: [Bash]
      - `H2_HARNESS_RELEASE_BASE`가 있으면 해당 base 사용.
      - 없으면 release 레포(`dandihera/harness-helm-release`) 기본 URL (`https://github.com/dandihera/harness-helm-release/releases/download/{target_version}`).
    - install package zip(`h2-install-{target_version}.zip`)을 임시 디렉터리에 다운로드 · 압축 해제한다. base가 http(s)가 아니면(`file://` 또는 로컬 경로) `h2-update.sh`의 `fetch()`와 동일하게 `cp`로 처리한다.
+     **차단 환경에서 로컬 base를 사용할 때는 아래 통합 블록을 제출하지 않고 `## 차단 환경에서 release 파일 준비`의 로컬 전용 명령을 별도 Bash 호출로 실행한다.** 실행하지 않는 분기의 명령 문자열도 훅에 걸릴 수 있기 때문이다.
      ```bash
      TMP_PKG=$(mktemp -d)
      release_base="${H2_HARNESS_RELEASE_BASE:-https://github.com/dandihera/harness-helm-release/releases/download/${target_version}}"
@@ -161,7 +162,9 @@ allowed-tools: [Bash]
      esac
      unzip -q "$TMP_PKG/pkg.zip" -d "$TMP_PKG/pkg"
      ```
-     실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
+     실패 시: "install package를 내려받지 못했습니다." 출력 후 중단하며 다음 중 해당 안내만 출력한다.
+     - 수동 복구(일반 환경): `## 부트스트랩 설치`의 기존 명령에 target·선택 인자를 반영해 출력한다.
+     - 수동 복구(차단 환경): `## 차단 환경에서 release 파일 준비`의 ① 파일 획득 → ② 로컬 base 재실행 절차를 출력한다.
    - dry-run 실행 및 결과 출력:
      ```text
      sh $TMP_PKG/pkg/h2-update.sh --target <target> --dry-run [--backup]
@@ -221,7 +224,9 @@ Windows PowerShell:
 - Step 1 target 정규화 실패(디렉터리 부재·권한) exit 1 시: 해당 경로를 명시한 오류 메시지 출력 후 중단. binary 탐색으로 진행하지 않는다.
 - Step 1 git 실패 시: 해당 오류 메시지 출력 후 중단.
 - Step 1 상태 조회 실패(exit 3) 시 즉시 중단. 오류 메시지와 `H2_GITHUB_API_BASE` 직접 지정 방법 안내. GitHub API 비인증 한도(60/h) 소진 403이면 오류 메시지에 리셋 시각·`GH_TOKEN`/`GITHUB_TOKEN` 인증 안내·`/h2:doctor --version vX.Y.Z` 우회 안내가 포함되므로 그대로 보인다(#1036).
-- Step 2 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." + 수동 복구 URL 출력 후 중단.
+- Step 2 zip 다운로드 실패 시: "install package를 내려받지 못했습니다." 출력 후 중단하며 다음 중 해당 안내만 출력한다.
+  - 수동 복구(일반 환경): `## 부트스트랩 설치`의 기존 명령에 target·선택 인자를 반영해 출력한다.
+  - 수동 복구(차단 환경): 아래 ① `gh release download` 또는 브라우저로 파일 준비 → ② `H2_HARNESS_RELEASE_BASE=file://` 재실행 절차를 출력한다.
 - Step 2 apply 실패 시:
   - `install-manifest.json`은 성공한 install command만 갱신한다.
   - `--backup`이 사용됐으면 backup으로 자동 rollback 시도.
@@ -243,5 +248,46 @@ Windows PowerShell:
   - `harness-<VER>-<os>-<arch>` — zip 내부 `h2-update.sh`가 받는 runtime binary (예: `harness-v0.35.1-darwin-arm64`).
   - `harness-<VER>-<os>-<arch>.sha256` — 위 binary의 checksum sidecar.
   - Windows에서는 binary가 `harness-<VER>-windows-<arch>.exe` + `.sha256`이며 `h2-update.ps1` 경로를 사용한다.
-- curl/wget 차단 환경(context-mode 플러그인 등)에서는 위 파일을 로컬에 두고 `H2_HARNESS_RELEASE_BASE=file:///abs/local/dir`(권장) 또는 절대/상대 로컬 경로로 실행한다. http(s)가 아닌 base는 doctor.md zip 단계와 `h2-update.sh` `fetch()` 모두 `cp`로 처리하므로 curl/wget 없이 zip·binary 다운로드가 완료된다.
-- 차단 환경 우회는 위 `file://`(또는 로컬 경로) base가 단일 지원 경로다. `gh release download` 등 별도 CLI 기반 다운로드 fallback은 **의도적으로 미지원**한다 (`gh`도 인증·네트워크가 필요해 동일하게 차단될 수 있어 실효성이 낮다 — 결정 근거: ADR-0005).
+- curl/wget 차단 환경(context-mode 플러그인 등)에서는 아래 절차로 위 파일을 준비한 뒤 `H2_HARNESS_RELEASE_BASE=file:///abs/local/dir`(권장) 또는 절대/상대 로컬 경로를 사용한다. http(s)가 아닌 base는 doctor.md zip 단계와 `h2-update.sh` `fetch()` 모두 `cp`로 처리한다.
+- 스크립트가 지원하는 차단 환경 경로는 여전히 `file://`(또는 로컬 경로) base이며, `gh`는 파일을 준비하는 **사용자 측 수단**이다. 자동 CLI fallback과 `ctx_fetch_and_index` 등 플러그인 경유 다운로드는 도입하지 않는다(결정 근거: ADR-0005).
+
+## 차단 환경에서 release 파일 준비
+
+### ① 같은 release의 파일 획득
+
+`gh` 설치와 인증(`gh auth`)이 전제다. 인증 상태를 확인한 뒤 `<tag>`를 적용할 release tag로 바꾸어 실행한다. `harness-<tag>-*`는 모든 플랫폼의 binary와 checksum sidecar를 받는 패턴이다.
+
+```sh
+gh auth status || exit 1
+target_version='<tag>'
+asset_dir=$(mktemp -d) || exit 1
+asset_dir=$(cd "$asset_dir" && pwd) || exit 1
+gh release download "$target_version" --repo dandihera/harness-helm-release \
+  --pattern "h2-install-${target_version}.zip" \
+  --pattern "harness-${target_version}-*" --dir "$asset_dir" || exit 1
+printf 'tag=%s\nH2_HARNESS_RELEASE_BASE=file://%s\n' "$target_version" "$asset_dir"
+```
+
+`gh` 미설치·미인증 또는 다운로드 차단 시 브라우저에서 `https://github.com/dandihera/harness-helm-release/releases/tag/<tag>`를 열고 Notes의 필요 파일 목록(zip·대상 OS/arch binary·sha256)을 같은 로컬 디렉터리에 저장한다. 브라우저도 접근할 수 없으면 접근 가능한 환경에서 받은 파일을 옮긴다. 다운로드 실패나 파일 누락 상태에서는 ②로 진행하지 않는다.
+
+### ② 로컬 base로 doctor 재실행
+
+같은 tag의 zip·대상 binary·sha256이 모두 있는지 확인한 뒤, agent에게 `H2_HARNESS_RELEASE_BASE=file:///abs/local/dir`(①에서 출력된 실제 절대경로)를 사용하도록 요청하고 `/h2:doctor --version <tag>`를 호출한다. 원래 target과 `--dry-run`·`--backup`·`--allow-non-git` 선택도 유지한다. 슬래시 명령은 셸 실행 파일이 아니며, 앞선 일회성 셸의 `export`가 후속 호출에 유지된다고 가정하지 않는다.
+
+agent는 각 Bash 호출에서 동일한 base·tag·target을 다시 명시한다. Step 2 zip 준비에는 다음 **로컬 전용** 명령을 사용하고, 출력된 `TMP_PKG` 경로를 후속 호출에 그대로 치환한다.
+
+```sh
+release_base='file:///abs/local/dir'
+target_version='<tag>'
+TMP_PKG=$(mktemp -d) || exit 1
+cp "${release_base#file://}/h2-install-${target_version}.zip" "$TMP_PKG/pkg.zip" || exit 1
+unzip -q "$TMP_PKG/pkg.zip" -d "$TMP_PKG/pkg" || exit 1
+printf 'TMP_PKG=%s\n' "$TMP_PKG"
+```
+
+dry-run과 사용자 Apply 확인 뒤의 적용 호출 모두 같은 base를 전달한다. `<TMP_PKG>`·`<target>`은 실제 경로로 치환하고 `[--backup]`은 요청된 경우에만 넣는다. `--dry-run` 요청이면 첫 호출 결과를 출력하고 종료하며, 기존 업데이트/cleanup 확인과 Apply/Cancel 절차를 생략하지 않는다.
+
+```text
+H2_HARNESS_RELEASE_BASE='file:///abs/local/dir' sh '<TMP_PKG>/pkg/h2-update.sh' --target '<target>' --dry-run [--backup]
+H2_HARNESS_RELEASE_BASE='file:///abs/local/dir' sh '<TMP_PKG>/pkg/h2-update.sh' --target '<target>' [--backup]
+```

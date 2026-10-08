@@ -131,6 +131,32 @@ if ! fetch "$ZIP_URL" "$ZIP_PATH" 2>/dev/null; then
 fi
 
 # --------------------------------------------------------------------------
+# 체크섬 검증 (#1073) — 압축 해제 전에 통과해야 한다.
+# --------------------------------------------------------------------------
+if ! fetch "$ZIP_URL.sha256" "$ZIP_PATH.sha256" 2>/dev/null; then
+    echo "오류: zip 체크섬 파일을 받지 못했습니다: $ZIP_URL.sha256" >&2
+    echo "  이 설치기는 체크섬이 있는 release만 지원합니다." >&2
+    exit 1
+fi
+EXPECTED=$(awk 'NF >= 1 {print $1; exit}' "$ZIP_PATH.sha256")
+if ! printf '%s' "$EXPECTED" | grep -Eq '^[0-9a-fA-F]{64}$'; then
+    echo "오류: zip 체크섬 파일 형식이 올바르지 않습니다: $ZIP_URL.sha256" >&2
+    exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL=$(sha256sum "$ZIP_PATH" | awk '{print $1}')
+elif command -v shasum >/dev/null 2>&1; then
+    ACTUAL=$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')
+else
+    echo "오류: sha256sum 또는 shasum이 필요합니다." >&2
+    exit 1
+fi
+if [ "$(printf '%s' "$EXPECTED" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$ACTUAL" | tr '[:upper:]' '[:lower:]')" ]; then
+    echo "오류: zip 체크섬 불일치: $ZIP_NAME" >&2
+    exit 1
+fi
+
+# --------------------------------------------------------------------------
 # 압축 해제
 # --------------------------------------------------------------------------
 EXTRACT_DIR="$TMPDIR_WORK/extracted"

@@ -64,6 +64,27 @@ try {
     }
 
     # ----------------------------------------------------------------------
+    # 체크섬 검증 (#1073) - 압축 해제 전에 통과해야 한다.
+    # ----------------------------------------------------------------------
+    $ShaPath = "$ZipPath.sha256"
+    try {
+        Invoke-WebRequest -Uri "$ZipUrl.sha256" -OutFile $ShaPath -UseBasicParsing
+    } catch {
+        Write-Error "오류: zip 체크섬 파일을 받지 못했습니다: $ZipUrl.sha256`n  이 설치기는 체크섬이 있는 release만 지원합니다."
+        exit 1
+    }
+    $Expected = ((Get-Content -LiteralPath $ShaPath -Raw) -split '\s+')[0]
+    if ($Expected -notmatch '^[0-9a-fA-F]{64}$') {
+        Write-Error "오류: zip 체크섬 파일 형식이 올바르지 않습니다: $ZipUrl.sha256"
+        exit 1
+    }
+    $Actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $ZipPath).Hash.ToLowerInvariant()
+    if ($Expected.ToLowerInvariant() -ne $Actual) {
+        Write-Error "오류: zip 체크섬 불일치: $ZipName"
+        exit 1
+    }
+
+    # ----------------------------------------------------------------------
     # 압축 해제
     # ----------------------------------------------------------------------
     $ExtractDir = Join-Path $Tmp "extracted"
