@@ -250,6 +250,7 @@ Windows PowerShell:
   - Windows에서는 binary가 `harness-<VER>-windows-<arch>.exe` + `.sha256`이며 `h2-update.ps1` 경로를 사용한다.
 - curl/wget 차단 환경(context-mode 플러그인 등)에서는 아래 절차로 위 파일을 준비한 뒤 `H2_HARNESS_RELEASE_BASE=file:///abs/local/dir`(권장) 또는 절대/상대 로컬 경로를 사용한다. http(s)가 아닌 base는 doctor.md zip 단계와 `h2-update.sh` `fetch()` 모두 `cp`로 처리한다.
 - 스크립트가 지원하는 차단 환경 경로는 여전히 `file://`(또는 로컬 경로) base이며, `gh`는 파일을 준비하는 **사용자 측 수단**이다. 자동 CLI fallback과 `ctx_fetch_and_index` 등 플러그인 경유 다운로드는 도입하지 않는다(결정 근거: ADR-0005).
+- 차단 환경 안내에서 agent는 사용자에게 `! curl …`·`! wget …`처럼 `!` 접두어로 훅을 거치지 않고 curl/wget을 직접 실행하라고 제안하지 않는다. 파일 획득은 항상 `## 차단 환경에서 release 파일 준비`의 ① 절차(`gh release download`, 불가 시 브라우저)를 먼저 안내한다.
 
 ## 차단 환경에서 release 파일 준비
 
